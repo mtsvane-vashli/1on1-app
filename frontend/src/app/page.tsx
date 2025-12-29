@@ -747,33 +747,37 @@ export default function Home() {
                 )}
             </div>
           </div>
-          {/* Web会議URL入力モーダル */}
-          {isUrlModalOpen && (
-              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                  <div className="bg-gray-900 border border-gray-700 p-6 rounded-xl max-w-md w-full">
-                      <h3 className="text-lg font-bold mb-4 text-white">Botを派遣する</h3>
-                      <p className="text-sm text-gray-400 mb-2">Web会議のURLを入力してください</p>
-                      <input 
-                          type="text" 
-                          placeholder="https://meet.google.com/..." 
-                          className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white mb-4 focus:border-purple-500 outline-none"
-                          value={meetingUrl}
-                          onChange={(e) => setMeetingUrl(e.target.value)}
-                      />
-                      <div className="flex justify-end gap-2">
-                          <button 
-                              onClick={() => setIsUrlModalOpen(false)}
-                              className="px-4 py-2 text-sm text-gray-400 hover:text-white"
-                          >
-                              キャンセル
-                          </button>
-                          <button 
-                              onClick={async () => {
-                                  if(!targetSubordinateForBot) return;
-                                  await handleJoinMeeting(targetSubordinateForBot);
-                                  setIsUrlModalOpen(false);
-                              }}
-                              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded text-sm font-bold text-white"
+          </div>
+        </div>
+      )}
+
+      {/* Web会議URL入力モーダル (配置修正: 条件分岐の外へ移動) */}
+      {isUrlModalOpen && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+              <div className="bg-gray-900 border border-gray-700 p-6 rounded-xl max-w-md w-full">
+                  <h3 className="text-lg font-bold mb-4 text-white">Botを派遣する</h3>
+                  <p className="text-sm text-gray-400 mb-2">Web会議のURLを入力してください</p>
+                  <input 
+                      type="text" 
+                      placeholder="https://meet.google.com/..." 
+                      className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white mb-4 focus:border-purple-500 outline-none"
+                      value={meetingUrl}
+                      onChange={(e) => setMeetingUrl(e.target.value)}
+                  />
+                  <div className="flex justify-end gap-2">
+                      <button 
+                          onClick={() => setIsUrlModalOpen(false)}
+                          className="px-4 py-2 text-sm text-gray-400 hover:text-white"
+                      >
+                          キャンセル
+                      </button>
+                      <button 
+                          onClick={async () => {
+                              if(!targetSubordinateForBot) return;
+                              await handleJoinMeeting(targetSubordinateForBot);
+                              setIsUrlModalOpen(false);
+                          }}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded text-sm font-bold text-white"
                           >
                               Bot派遣
                           </button>
@@ -781,8 +785,6 @@ export default function Home() {
                   </div>
               </div>
           )}
-        </div>
-      )}
     </div>
   );
 }
