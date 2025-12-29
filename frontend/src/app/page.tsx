@@ -136,7 +136,8 @@ export default function Home() {
       }
 
       // ★修正: 引数で渡されたIDを使って接続する
-      const ws = new WebSocket(`${WS_BASE_URL}/ws/client/${targetSessionId}?token=${token}`);
+      const modeParam = isMicMode ? "mic" : "viewer";
+      const ws = new WebSocket(`${WS_BASE_URL}/ws/client/${targetSessionId}?token=${token}&client_mode=${modeParam}`);
       socketRef.current = ws;
 
       ws.onopen = () => {

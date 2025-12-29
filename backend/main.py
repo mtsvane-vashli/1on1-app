@@ -331,7 +331,8 @@ async def ws_meeting_baas(
 async def ws_client(
     websocket: WebSocket, 
     session_id: str,
-    token: str = Query(...) # ★URLパラメータからトークンを受け取る
+    token: str = Query(...), # ★URLパラメータからトークンを受け取る
+    client_mode: str = Query("mic") # ★モードを受け取る (デフォルトはmic)
 ):
     # --- 認証処理 ---
     user_info = verify_user(token)
@@ -348,7 +349,7 @@ async def ws_client(
         db_session_id = create_session(
             user_info["id"], 
             user_info["organization_id"], 
-            mode="mic"
+            mode=client_mode # DBにも正しいモードで記録
         )
 
         # ★★★ 追加: FrontendにDBのセッションIDを通知する ★★★
@@ -357,8 +358,18 @@ async def ws_client(
             "id": db_session_id
         })
 
-        # 作成したIDを渡して処理開始
-        await process_audio(websocket, session_id, db_session_id, is_raw_audio=False)
+        if client_mode == "viewer":
+            # 視聴モード：音声処理はせず、接続維持のみ行う
+            # (Manager経由で送られてくるメッセージを受信し続けるため)
+            try:
+                while True:
+                    await websocket.receive_text() # クライアントからの切断待ち
+            except WebSocketDisconnect:
+                pass
+        else:
+            # マイクモード：音声処理を開始
+            await process_audio(websocket, session_id, db_session_id, is_raw_audio=False)
+
     except Exception as e:
         print(f"Error: {e}")
         await websocket.close()
