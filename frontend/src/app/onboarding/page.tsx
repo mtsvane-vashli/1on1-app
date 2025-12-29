@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
-// ★簡易的な招待コード（本番ではDB管理や環境変数にするのがベターですが、今はこれで十分）
-const SECRET_INVITE_CODE = "1on1-beta-2025";
+// ★環境変数から招待コードを取得するように変更
+const SECRET_INVITE_CODE = process.env.NEXT_PUBLIC_INVITE_CODE;
 
 export default function OnboardingPage() {
   const router = useRouter();
