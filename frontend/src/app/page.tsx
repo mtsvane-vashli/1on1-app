@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 type Transcript = {
   text: string;
@@ -8,6 +10,9 @@ type Transcript = {
 };
 
 export default function Home() {
+  const router = useRouter();
+
+  // --- State定義 ---
   const [sessionId] = useState("demo-session-1");
   const [isConnected, setIsConnected] = useState(false);
   const [mode, setMode] = useState<"mic" | "viewer" | null>(null);
@@ -20,6 +25,25 @@ export default function Home() {
   
   const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  // --- プロフィールチェック ---
+  useEffect(() => {
+    const checkUserStatus = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return; 
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single();
+      
+      if (!profile || !profile.organization_id) {
+        router.push('/onboarding');
+      }
+    };
+    checkUserStatus();
+  }, [router]);
 
   const cleanup = useCallback(() => {
     if (socketRef.current) {
@@ -34,64 +58,96 @@ export default function Home() {
     setIsJoining(false);
   }, []);
 
-  const connectWebSocket = (isMicMode: boolean) => {
-    cleanup();
-    const ws = new WebSocket(`ws://localhost:8000/ws/client/${sessionId}`);
-    socketRef.current = ws;
+  // ★修正1: async を追加
+  const connectWebSocket = (isMicMode: boolean): Promise<void> => {
+    return new Promise(async (resolve, reject) => {
+      cleanup();
 
-    ws.onopen = () => {
-      console.log("Connected to server");
-      setIsConnected(true);
-      setMode(isMicMode ? "mic" : "viewer");
-    };
+      // トークン取得
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "transcript") {
-        setTranscripts((prev) => {
+      if (!token) {
+        alert("認証エラー: ログインし直してください");
+        reject("No token");
+        return;
+      }
+
+      const ws = new WebSocket(`ws://localhost:8000/ws/client/${sessionId}?token=${token}`);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        console.log("✅ WebSocket Connected!");
+        setIsConnected(true);
+        setMode(isMicMode ? "mic" : "viewer");
+        resolve(); // ★ここで初めて「完了」とみなす
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === "transcript") {
+          setTranscripts((prev) => {
             const last = prev[prev.length - 1];
             if (last && last.text === data.text && last.speaker === data.speaker) {
-                return prev;
+              return prev;
             }
             return [...prev, { text: data.text, speaker: data.speaker }];
-        });
-      } else if (data.type === "advice") {
-        setAdvice(data.content);
-      }
-    };
+          });
+        } else if (data.type === "advice") {
+          setAdvice(data.content);
+        }
+      };
 
-    ws.onclose = () => {
-      console.log("Disconnected");
-      setIsConnected(false);
-      setMode(null);
-    };
+      ws.onclose = () => {
+        console.log("Disconnected");
+        setIsConnected(false);
+        setMode(null);
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket Error:", err);
+        reject(err);
+      };
+    });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
   };
 
   // Botを呼び出す関数
   const handleJoinMeeting = async () => {
     if (!meetingUrl) return alert("会議URLを入力してください");
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) {
+      alert("認証エラー");
+      return;
+    }
     
     setIsJoining(true);
     
-    // 1. まずWebSocketをつなぐ (字幕待機状態にする)
-    connectWebSocket(false);
+    // 1. WebSocket接続 (await済)
+    await connectWebSocket(false);
 
-    // 2. BackendにBot派遣リクエストを送る
+    // 2. Bot派遣リクエスト
     try {
       const res = await fetch("http://localhost:8000/join-meeting", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ meeting_url: meetingUrl }),
       });
       
       const data = await res.json();
       if (data.error) {
         alert("エラー: " + data.error);
-        cleanup(); // 失敗したら切断
+        cleanup(); 
       } else {
         console.log("Bot dispatched!", data);
-        // 成功しても isJoining はそのまま (「接続中」等の表示のため)
-        // Botが入室して音声が来れば字幕が動き出す
       }
     } catch (err) {
       console.error(err);
@@ -103,15 +159,19 @@ export default function Home() {
   };
 
   const startMicSession = async () => {
-    connectWebSocket(true);
+    // ★修正2: ここにも await を追加 (ソケット準備完了を待つため)
+    await connectWebSocket(true);
+    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0 && socketRef.current?.readyState === WebSocket.OPEN) {
           socketRef.current.send(event.data);
         }
       };
+      
       mediaRecorder.start(250);
       mediaRecorderRef.current = mediaRecorder;
     } catch (err) {
@@ -143,6 +203,12 @@ export default function Home() {
         </h1>
         
         <div className="flex gap-4 items-center">
+          <button 
+            onClick={handleLogout}
+            className="text-xs text-gray-500 hover:text-white underline"
+          >
+            ログアウト
+          </button>
           {!isConnected ? (
             <>
               {/* 会議URL入力エリア */}
@@ -188,7 +254,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 以下、字幕エリアとアドバイスエリアは前回と同じなので省略してもOKですが、念のため構造維持 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[80vh] max-w-6xl mx-auto">
         <div className="md:col-span-2 bg-gray-900/50 rounded-xl p-6 overflow-y-auto border border-gray-800 flex flex-col shadow-inner">
           <div className="flex justify-between items-center mb-4">

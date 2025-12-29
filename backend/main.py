@@ -3,25 +3,27 @@ import asyncio
 import json
 from typing import List, Dict, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+# --- 必要なライブラリをまとめてインポート ---
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-
+from pydantic import BaseModel
+import httpx 
+import google.generativeai as genai
 from deepgram import (
     DeepgramClient,
     LiveTranscriptionEvents,
     LiveOptions,
 )
-import google.generativeai as genai
 
-from pydantic import BaseModel # データ構造定義用
-import httpx # 外部API通信用
+# --- DB関連関数のインポート ---
+from db import create_session, save_transcript, save_advice, verify_user
 
 load_dotenv()
 
 app = FastAPI()
 
-# CORS設定 (フロントエンドからのアクセス許可)
+# CORS設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,11 +39,8 @@ gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
 # --- Connection Manager ---
 class ConnectionManager:
-    """クライアント(Frontend)へのプッシュ通知を管理"""
     def __init__(self):
-        # session_idごとに複数のWebSocket接続を管理
         self.active_connections: Dict[str, List[WebSocket]] = {}
-        # 会話ログ (簡易メモリ保存)
         self.transcripts: Dict[str, list] = {}
 
     async def connect(self, websocket: WebSocket, session_id: str):
@@ -57,7 +56,6 @@ class ConnectionManager:
             self.active_connections[session_id].remove(websocket)
 
     async def broadcast(self, message: dict, session_id: str):
-        """指定セッションの全クライアントにデータを送信"""
         if session_id in self.active_connections:
             for connection in self.active_connections[session_id]:
                 try:
@@ -75,15 +73,13 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- Core Logic: Audio Processing & AI Advice ---
+# --- Core Logic ---
 
-async def generate_advice(session_id: str):
+async def generate_advice(session_id: str, db_session_id: str = None):
     """Geminiを使ってアドバイスを生成"""
     context = manager.get_recent_context(session_id)
-    if not context:
-        return
+    if not context: return
 
-    # プロンプトの構築
     conversation_text = "\n".join([f"Speaker {item['speaker']}: {item['text']}" for item in context])
     prompt = f"""
     あなたは1on1ミーティングのコーチです。以下の会話ログを分析し、
@@ -94,7 +90,6 @@ async def generate_advice(session_id: str):
     """
     
     try:
-        # 非同期でGemini呼び出し
         response = await gemini_model.generate_content_async(prompt)
         advice_text = response.text.strip()
         
@@ -102,22 +97,28 @@ async def generate_advice(session_id: str):
             "type": "advice",
             "content": advice_text
         }, session_id)
+
+        # ★DB保存
+        if db_session_id:
+            try:
+                save_advice(db_session_id, advice_text)
+                print(f"Saved advice to DB: {db_session_id}")
+            except Exception as e:
+                print(f"DB Error (Advice): {e}")
+
     except Exception as e:
         print(f"Gemini Error: {e}")
+
 
 async def process_audio(
     websocket_in: WebSocket, 
     session_id: str, 
+    db_session_id: str, # ★ここは必須引数として定義済み
     is_raw_audio: bool = False
 ):
-    """
-    Meeting Baas対応: シンプルな即時転送版（バッファリングなし）
-    """
     try:
-        # Deepgram接続
         dg_connection = deepgram_client.listen.asyncwebsocket.v("1")
 
-        # --- 結果受け取り ---
         async def on_message(self, result, **kwargs):
             sentence = result.channel.alternatives[0].transcript
             if len(sentence) == 0: return
@@ -131,12 +132,18 @@ async def process_audio(
                 "text": sentence,
                 "speaker": speaker
             }, session_id)
+
+            # ★DB保存 (引数のdb_session_idを使用)
+            if db_session_id:
+                try:
+                    save_transcript(db_session_id, sentence, speaker)
+                except Exception as e:
+                    print(f"DB Error: {e}")
             
-            asyncio.create_task(generate_advice(session_id))
+            asyncio.create_task(generate_advice(session_id, db_session_id))
 
         dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
 
-        # 設定: シンプルに戻す
         options = LiveOptions(
             model="nova-2",
             language="ja",
@@ -144,7 +151,6 @@ async def process_audio(
             diarize=True,
         )
         
-        # Meeting Baas用の16k設定は維持（これがないと動かないため）
         if is_raw_audio:
             options.encoding = "linear16"
             options.sample_rate = 16000
@@ -156,62 +162,70 @@ async def process_audio(
 
         print(f"Deepgram Live connected for session: {session_id}")
 
-        # --- 受信ループ（元に戻す: 来たデータを即転送） ---
         try:
             while True:
                 message = await websocket_in.receive()
-
                 if "bytes" in message and message["bytes"]:
-                    # バッファリングせず、即座に送る
                     await dg_connection.send(message["bytes"])
-                
                 elif "text" in message:
-                    # メタデータは無視
                     pass
-                    
                 elif message["type"] == "websocket.disconnect":
                     print("Client disconnected")
                     break
-        
         except WebSocketDisconnect:
             print(f"WebSocket disconnected: {session_id}")
-        except Exception as e:
-            print(f"Loop Error: {e}")
         finally:
             await dg_connection.finish()
 
     except Exception as e:
         print(f"Process Audio Critical Error: {e}")
 
-# --- Endpoints ---
 
-# --- リクエストボディの定義 ---
+# --- Endpoints (ここが大きく変わりました) ---
+
 class JoinMeetingRequest(BaseModel):
     meeting_url: str
     bot_name: str = "AI 1on1 Coach"
 
-# --- Bot呼び出し用エンドポイント ---
+# 1. Bot派遣リクエスト (HTTP)
 @app.post("/join-meeting")
-async def join_meeting(request: JoinMeetingRequest):
-    """
-    Frontendから会議URLを受け取り、Meeting Baas APIを叩いてBotを派遣する
-    """
+async def join_meeting(
+    request: JoinMeetingRequest,
+    authorization: str = Header(None) # ★ヘッダーからトークン取得
+):
+    # --- 認証処理 ---
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
     
-    # .envから設定を読み込む
+    token = authorization.replace("Bearer ", "")
+    user_info = verify_user(token)
+    
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    # ----------------
+
     api_key = os.getenv("MEETING_BAAS_API_KEY")
-    public_url = os.getenv("PUBLIC_URL") # ngrokのURL (例: https://xxxx.ngrok-free.app)
+    public_url = os.getenv("PUBLIC_URL")
     
     if not api_key or not public_url:
-        return {"error": "API Key or Public URL is missing in .env"}
+        return {"error": "Config missing"}
 
-    # https -> wss に変換
+    # ★Bot派遣前にDBセッションを作成
+    try:
+        db_session_id = create_session(
+            user_info["id"], 
+            user_info["organization_id"], 
+            mode="bot"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB Error: {e}")
+
     wss_url = public_url.replace("https://", "wss://").replace("http://", "ws://")
-    # 固定のセッションID (本番では動的に生成推奨)
-    session_id = "demo-session-1"
+    session_id = "demo-session-1" 
     
-    output_url = f"{wss_url}/ws/meeting-baas/{session_id}"
+    # ★URLパラメータに db_session_id を付与してBotに教える
+    output_url = f"{wss_url}/ws/meeting-baas/{session_id}?db_session_id={db_session_id}"
 
-    # Meeting Baas APIへのペイロード
     payload = {
         "meeting_url": request.meeting_url,
         "bot_name": request.bot_name,
@@ -222,7 +236,6 @@ async def join_meeting(request: JoinMeetingRequest):
     }
 
     print(f"DEBUG: Spawning bot to {request.meeting_url}")
-    print(f"DEBUG: Output WebSocket: {output_url}")
 
     async with httpx.AsyncClient() as client:
         try:
@@ -235,33 +248,59 @@ async def join_meeting(request: JoinMeetingRequest):
                 },
                 timeout=10.0
             )
-            response.raise_for_status() # エラーなら例外発生
+            response.raise_for_status()
             return response.json()
-            
-        except httpx.HTTPStatusError as e:
-            print(f"Meeting Baas API Error: {e.response.text}")
-            return {"error": f"Failed to join meeting: {e.response.text}"}
         except Exception as e:
             print(f"Error: {e}")
             return {"error": str(e)}
 
+# 2. Bot受信用 (WebSocket)
 @app.websocket("/ws/meeting-baas/{session_id}")
-async def ws_meeting_baas(websocket: WebSocket, session_id: str):
-    """Meeting Baasからの入力 (Raw Audio)"""
-    # Meeting BaasはBotのため、managerへの登録は必須ではないが、
-    # 処理フロー統一のためconnect呼出（ただし画面はないので送信しても無視されるだけ）
-    await websocket.accept() 
-    # 注意: Meeting Baasは16khz Raw PCMを送ってくる
-    await process_audio(websocket, session_id, is_raw_audio=True)
+async def ws_meeting_baas(
+    websocket: WebSocket, 
+    session_id: str,
+    db_session_id: str = Query(None) # ★URLパラメータからIDを受け取る
+):
+    await websocket.accept()
+    
+    if not db_session_id:
+        print("Error: No db_session_id provided from Bot")
+        await websocket.close()
+        return
 
+    # 受け取ったIDを使って処理開始
+    await process_audio(websocket, session_id, db_session_id, is_raw_audio=True)
+
+# 3. マイク/クライアント用 (WebSocket)
 @app.websocket("/ws/client/{session_id}")
-async def ws_client(websocket: WebSocket, session_id: str):
-    """ブラウザクライアント (表示 兼 マイク入力)"""
+async def ws_client(
+    websocket: WebSocket, 
+    session_id: str,
+    token: str = Query(...) # ★URLパラメータからトークンを受け取る
+):
+    # --- 認証処理 ---
+    user_info = verify_user(token)
+    if not user_info:
+        print("Authentication failed")
+        await websocket.close(code=4001)
+        return
+    # ----------------
+
     await manager.connect(websocket, session_id)
+
+    # ★接続時にDBセッションを作成
     try:
-        # ブラウザはWebMなどを送るため is_raw_audio=False (自動検出)
-        await process_audio(websocket, session_id, is_raw_audio=False)
-    except WebSocketDisconnect:
+        db_session_id = create_session(
+            user_info["id"], 
+            user_info["organization_id"], 
+            mode="mic"
+        )
+        # 作成したIDを渡して処理開始
+        await process_audio(websocket, session_id, db_session_id, is_raw_audio=False)
+    except Exception as e:
+        print(f"Error: {e}")
+        await websocket.close()
+    finally:
         manager.disconnect(websocket, session_id)
 
 if __name__ == "__main__":
