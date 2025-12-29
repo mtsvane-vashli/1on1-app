@@ -28,6 +28,7 @@ type Subordinate = {
   id: string;
   name: string;
   department: string | null;
+  personality_text: string | null;
 };
 
 export default function Home() {
@@ -55,6 +56,7 @@ export default function Home() {
   const [subordinates, setSubordinates] = useState<Subordinate[]>([]);
   const [newSubName, setNewSubName] = useState("");
   const [isAddingSub, setIsAddingSub] = useState(false);
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   
   // Bot派遣モーダル用
   const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
@@ -163,6 +165,35 @@ export default function Home() {
         console.error(e);
     } finally {
         setIsAddingSub(false);
+    }
+  };
+
+  const handleUploadPdf = async (subordinateId: string, file: File) => {
+    setIsUploadingPdf(true);
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch(`${API_BASE_URL}/subordinates/${subordinateId}/upload-pdf`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${token}` },
+            body: formData
+        });
+
+        if (res.ok) {
+            alert("PDFのアップロードと分析が完了しました！");
+            fetchSubordinates();
+        } else {
+            alert("アップロードに失敗しました");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("エラーが発生しました");
+    } finally {
+        setIsUploadingPdf(false);
     }
   };
 
@@ -552,35 +583,58 @@ export default function Home() {
                     : "border-gray-800 hover:border-blue-500/30"
                 }`}
               >
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg font-bold shadow-lg shadow-blue-900/20">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg font-bold shadow-lg shadow-blue-900/20 relative">
                     {sub.name[0]}
+                    {sub.personality_text && (
+                        <div className="absolute -top-1 -right-1 bg-green-500 text-white rounded-full p-0.5 shadow-md border border-gray-900">
+                            <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                    )}
                 </div>
                 <p className="font-bold text-gray-200 group-hover:text-blue-400 transition-colors">{sub.name}</p>
                 <p className="text-[10px] text-gray-500">{sub.department || "Team Member"}</p>
                 
-                <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex flex-row items-center justify-center gap-2 rounded-xl transition-opacity backdrop-blur-[1px]">
-                    <button 
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
-                            console.log("Mic button clicked");
-                            startMicSession(sub.id); 
-                        }}
-                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded-lg w-auto font-bold"
+                <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 rounded-xl transition-opacity backdrop-blur-[1px]">
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                console.log("Mic button clicked");
+                                startMicSession(sub.id); 
+                            }}
+                            className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded-lg w-auto font-bold"
+                        >
+                            🎤 対面
+                        </button>
+                        <button 
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                console.log("Web button clicked");
+                                setTargetSubordinateForBot(sub.id); 
+                                setMeetingUrl(""); 
+                                setIsUrlModalOpen(true); 
+                            }}
+                            className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded-lg w-auto font-bold"
+                        >
+                            🤖 Web
+                        </button>
+                    </div>
+                    
+                    <label 
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[10px] text-gray-400 hover:text-white cursor-pointer underline decoration-dotted underline-offset-4 mt-1"
                     >
-                        🎤 対面
-                    </button>
-                    <button 
-                         onClick={(e) => { 
-                             e.stopPropagation(); 
-                             console.log("Web button clicked");
-                             setTargetSubordinateForBot(sub.id); 
-                             setMeetingUrl(""); 
-                             setIsUrlModalOpen(true); 
-                         }}
-                        className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded-lg w-auto font-bold"
-                    >
-                        🤖 Web
-                    </button>
+                        {isUploadingPdf ? "分析中..." : sub.personality_text ? "📄 PDFを更新" : "📄 特性PDFを登録"}
+                        <input 
+                            type="file" 
+                            accept="application/pdf"
+                            className="hidden" 
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleUploadPdf(sub.id, file);
+                            }}
+                        />
+                    </label>
                 </div>
               </div>
             ))}
