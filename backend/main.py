@@ -280,6 +280,10 @@ async def join_meeting(
     
     # ★URLパラメータに db_session_id を付与してBotに教える
     output_url = f"{wss_url}/ws/meeting-baas/{request.session_id}?db_session_id={db_session_id}"
+    
+    # ★DEBUG: Botに渡すURLを確認
+    print(f"DEBUG: Spawning bot to {request.meeting_url}")
+    print(f"DEBUG: Output WebSocket URL: {output_url}")
 
     payload = {
         "meeting_url": request.meeting_url,
@@ -289,8 +293,6 @@ async def join_meeting(
             "output": output_url
         }
     }
-
-    print(f"DEBUG: Spawning bot to {request.meeting_url}")
 
     async with httpx.AsyncClient() as client:
         try:
@@ -316,6 +318,9 @@ async def ws_meeting_baas(
     session_id: str,
     db_session_id: str = Query(None) # ★URLパラメータからIDを受け取る
 ):
+    # ★DEBUG: Botからの接続を確認
+    print(f"DEBUG: Bot connecting to WS for session: {session_id}")
+    
     await websocket.accept()
     
     if not db_session_id:
