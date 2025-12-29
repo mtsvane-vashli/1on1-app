@@ -85,3 +85,7 @@ def update_session_summary(session_id: str, summary_text: str):
         .update({"summary": summary_text}) \
         .eq("id", session_id) \
         .execute()
+
+def delete_session(session_id: str, user_id: str):
+    """指定されたセッションを削除 (所有者確認付き)"""
+    supabase.table("sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()

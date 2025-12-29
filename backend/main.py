@@ -17,7 +17,7 @@ from deepgram import (
 )
 
 # --- DB関連関数のインポート ---
-from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary
+from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary, delete_session
 
 load_dotenv()
 
@@ -190,6 +190,27 @@ async def process_audio(
 
 
 # --- Endpoints (ここが大きく変わりました) ---
+
+@app.delete("/sessions/{session_id}")
+async def delete_session_endpoint(
+    session_id: str,
+    authorization: str = Header(None)
+):
+    """指定されたセッションを削除する"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    token = authorization.replace("Bearer ", "")
+    user_info = verify_user(token)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        delete_session(session_id, user_info["id"])
+        return {"status": "ok", "message": "Session deleted"}
+    except Exception as e:
+        print(f"Delete Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class SummarizeRequest(BaseModel):
     db_session_id: str

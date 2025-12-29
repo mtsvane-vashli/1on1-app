@@ -313,6 +313,30 @@ export default function Home() {
     }
   };
 
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation(); // 親要素のクリックイベント(loadSession)を阻止
+    if (!confirm("本当にこの履歴を削除しますか？")) return;
+
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
+            method: "DELETE",
+            headers: { 
+                "Authorization": `Bearer ${token}`
+            },
+        });
+
+        if (!res.ok) throw new Error("Delete failed");
+
+        await fetchHistory();
+    } catch (err) {
+        console.error(err);
+        alert("削除に失敗しました");
+    }
+  };
+
   const loadSession = async (session: SessionHistory) => {
     cleanup();
     setIsConnected(true);
@@ -441,7 +465,7 @@ export default function Home() {
                     <p className="text-gray-600 text-sm italic">まだ要約がありません</p>
                   )}
                   
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-4 flex justify-between items-center">
                     <span className={`text-[10px] px-2 py-0.5 rounded border ${
                         session.mode === 'bot' 
                         ? 'border-purple-500/30 text-purple-400 bg-purple-900/10' 
@@ -449,6 +473,12 @@ export default function Home() {
                     }`}>
                         {session.mode === 'bot' ? 'Bot参加' : '対面マイク'}
                     </span>
+                    <button 
+                        onClick={(e) => handleDeleteSession(e, session.id)}
+                        className="text-xs text-red-500 hover:text-red-400 hover:underline px-2 py-1"
+                    >
+                        削除
+                    </button>
                   </div>
                 </div>
               ))}
