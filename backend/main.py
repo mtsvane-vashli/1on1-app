@@ -306,7 +306,10 @@ async def join_meeting(
                 timeout=10.0
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            # ★作成したDBセッションIDをFrontendに返す
+            data["db_session_id"] = db_session_id
+            return data
         except Exception as e:
             print(f"Error: {e}")
             return {"error": str(e)}

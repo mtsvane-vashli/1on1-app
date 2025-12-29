@@ -218,6 +218,10 @@ export default function Home() {
         cleanup(); 
       } else {
         console.log("Bot dispatched!", data);
+        // ★Bot用セッションIDを保存 (要約用)
+        if (data.db_session_id) {
+            setDbSessionId(data.db_session_id);
+        }
       }
     } catch (err) {
       console.error(err);
