@@ -4,6 +4,11 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+// 環境変数からAPIのURLを取得 (なければlocalhost)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// http -> ws, https -> wss に変換
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws");
+
 // --- 型定義 ---
 type Transcript = {
   text: string;
@@ -131,7 +136,7 @@ export default function Home() {
       }
 
       // ★修正: 引数で渡されたIDを使って接続する
-      const ws = new WebSocket(`ws://localhost:8000/ws/client/${targetSessionId}?token=${token}`);
+      const ws = new WebSocket(`${WS_BASE_URL}/ws/client/${targetSessionId}?token=${token}`);
       socketRef.current = ws;
 
       ws.onopen = () => {
@@ -200,7 +205,7 @@ export default function Home() {
       // ★修正: 生成したIDを渡す
       await connectWebSocket(false, newSessionId);
 
-      const res = await fetch("http://localhost:8000/join-meeting", {
+      const res = await fetch(`${API_BASE_URL}/join-meeting`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ meeting_url: meetingUrl }),
@@ -277,7 +282,7 @@ export default function Home() {
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
 
-            const res = await fetch("http://localhost:8000/summarize", {
+            const res = await fetch(`${API_BASE_URL}/summarize`, {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",
