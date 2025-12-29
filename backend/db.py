@@ -41,12 +41,13 @@ def verify_user(token: str):
         print(f"Auth Error: {e}")
         return None
 
-def create_session(user_id: str, organization_id: str, mode: str = "mic"):
+def create_session(user_id: str, organization_id: str, mode: str = "mic", subordinate_id: str = None):
     """新しい会議セッションを作成してIDを返す"""
     data = {
         "user_id": user_id,
         "organization_id": organization_id,
         "mode": mode,
+        "subordinate_id": subordinate_id,
         "title": "無題の会議", # 後でAIに要約させる
     }
     response = supabase.table("sessions").insert(data).execute()

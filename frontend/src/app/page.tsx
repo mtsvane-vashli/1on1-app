@@ -53,6 +53,10 @@ export default function Home() {
   const [subordinates, setSubordinates] = useState<Subordinate[]>([]);
   const [newSubName, setNewSubName] = useState("");
   const [isAddingSub, setIsAddingSub] = useState(false);
+  
+  // Bot派遣モーダル用
+  const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
+  const [targetSubordinateForBot, setTargetSubordinateForBot] = useState<string | null>(null);
 
   // 会議URL入力用
   const [meetingUrl, setMeetingUrl] = useState("");
@@ -180,8 +184,8 @@ export default function Home() {
   }, [cleanup]);
 
   // --- 4. WebSocket接続 (IDを指定可能に修正) ---
-  // ★修正: targetSessionId 引数を追加
-  const connectWebSocket = (isMicMode: boolean, targetSessionId: string): Promise<void> => {
+  // ★修正: targetSessionId 引数を追加, subordinateIdを追加
+  const connectWebSocket = (isMicMode: boolean, targetSessionId: string, subordinateId?: string): Promise<void> => {
     return new Promise(async (resolve, reject) => {
       if (socketRef.current) {
          socketRef.current.close();
@@ -198,7 +202,12 @@ export default function Home() {
 
       // ★修正: 引数で渡されたIDを使って接続する
       const modeParam = isMicMode ? "mic" : "viewer";
-      const ws = new WebSocket(`${WS_BASE_URL}/ws/client/${targetSessionId}?token=${token}&client_mode=${modeParam}`);
+      let url = `${WS_BASE_URL}/ws/client/${targetSessionId}?token=${token}&client_mode=${modeParam}`;
+      if (subordinateId) {
+        url += `&subordinate_id=${subordinateId}`;
+      }
+      
+      const ws = new WebSocket(url);
       socketRef.current = ws;
 
       ws.onopen = () => {
@@ -245,7 +254,7 @@ export default function Home() {
     router.refresh();
   };
 
-  const handleJoinMeeting = async () => {
+  const handleJoinMeeting = async (subordinateId?: string) => {
     if (!meetingUrl) return alert("会議URLを入力してください");
 
     const { data: { session } } = await supabase.auth.getSession();
@@ -270,7 +279,11 @@ export default function Home() {
       const res = await fetch(`${API_BASE_URL}/join-meeting`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ meeting_url: meetingUrl, session_id: newSessionId }),
+        body: JSON.stringify({ 
+            meeting_url: meetingUrl, 
+            session_id: newSessionId,
+            subordinate_id: subordinateId 
+        }),
       });
       
       const data = await res.json();
@@ -293,7 +306,7 @@ export default function Home() {
     }
   };
 
-  const startMicSession = async () => {
+  const startMicSession = async (subordinateId?: string) => {
     cleanup(); 
     
     // ★修正: 新しいセッションIDを生成
@@ -303,7 +316,7 @@ export default function Home() {
     try {
       console.log("Connecting to WebSocket...");
       // ★修正: 生成したIDを渡す
-      await connectWebSocket(true, newSessionId);
+      await connectWebSocket(true, newSessionId, subordinateId);
       console.log("WebSocket Ready. Starting Mic...");
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -521,9 +534,24 @@ export default function Home() {
                 <p className="font-bold text-gray-200 group-hover:text-blue-400 transition-colors">{sub.name}</p>
                 <p className="text-[10px] text-gray-500">{sub.department || "Team Member"}</p>
                 
-                {/* ホバー時に「開始」ボタンなどを出す予定の場所 */}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-xl transition-opacity backdrop-blur-[1px]">
-                    <span className="text-xs font-bold text-white border border-white/30 px-3 py-1 rounded-full">Coming Soon</span>
+                <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 rounded-xl transition-opacity backdrop-blur-[1px]">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); startMicSession(sub.id); }}
+                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded-lg w-20 font-bold"
+                    >
+                        🎤 対面
+                    </button>
+                    <button 
+                         onClick={(e) => { 
+                             e.stopPropagation(); 
+                             setTargetSubordinateForBot(sub.id); 
+                             setMeetingUrl(""); 
+                             setIsUrlModalOpen(true); 
+                         }}
+                        className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded-lg w-20 font-bold"
+                    >
+                        🤖 Web
+                    </button>
                 </div>
               </div>
             ))}
@@ -661,6 +689,40 @@ export default function Home() {
                               </button>
                           </div>
                       )}
+                  </div>
+              </div>
+          )}
+          {/* Web会議URL入力モーダル */}
+          {isUrlModalOpen && (
+              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                  <div className="bg-gray-900 border border-gray-700 p-6 rounded-xl max-w-md w-full">
+                      <h3 className="text-lg font-bold mb-4 text-white">Botを派遣する</h3>
+                      <p className="text-sm text-gray-400 mb-2">Web会議のURLを入力してください</p>
+                      <input 
+                          type="text" 
+                          placeholder="https://meet.google.com/..." 
+                          className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white mb-4 focus:border-purple-500 outline-none"
+                          value={meetingUrl}
+                          onChange={(e) => setMeetingUrl(e.target.value)}
+                      />
+                      <div className="flex justify-end gap-2">
+                          <button 
+                              onClick={() => setIsUrlModalOpen(false)}
+                              className="px-4 py-2 text-sm text-gray-400 hover:text-white"
+                          >
+                              キャンセル
+                          </button>
+                          <button 
+                              onClick={async () => {
+                                  if(!targetSubordinateForBot) return;
+                                  await handleJoinMeeting(targetSubordinateForBot);
+                                  setIsUrlModalOpen(false);
+                              }}
+                              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded text-sm font-bold text-white"
+                          >
+                              Bot派遣
+                          </button>
+                      </div>
                   </div>
               </div>
           )}

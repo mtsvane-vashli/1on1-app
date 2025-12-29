@@ -317,6 +317,7 @@ class JoinMeetingRequest(BaseModel):
     meeting_url: str
     session_id: str
     bot_name: str = "AI 1on1 Coach"
+    subordinate_id: Optional[str] = None
 
 # 1. Bot派遣リクエスト (HTTP)
 @app.post("/join-meeting")
@@ -346,7 +347,8 @@ async def join_meeting(
         db_session_id = create_session(
             user_info["id"], 
             user_info["organization_id"], 
-            mode="bot"
+            mode="bot",
+            subordinate_id=request.subordinate_id
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB Error: {e}")
@@ -415,7 +417,8 @@ async def ws_client(
     websocket: WebSocket, 
     session_id: str,
     token: str = Query(...), # ★URLパラメータからトークンを受け取る
-    client_mode: str = Query("mic") # ★モードを受け取る (デフォルトはmic)
+    client_mode: str = Query("mic"), # ★モードを受け取る (デフォルトはmic)
+    subordinate_id: str = Query(None) # ★部下ID (任意)
 ):
     # --- 認証処理 ---
     user_info = verify_user(token)
@@ -433,7 +436,8 @@ async def ws_client(
             db_session_id = create_session(
                 user_info["id"], 
                 user_info["organization_id"], 
-                mode="mic"
+                mode="mic",
+                subordinate_id=subordinate_id
             )
 
             # FrontendにDBのセッションIDを通知する
