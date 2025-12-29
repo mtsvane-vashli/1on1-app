@@ -1,15 +1,17 @@
 import os
 import asyncio
 import json
+import io
 from typing import List, Dict, Optional
 
 # --- 必要なライブラリをまとめてインポート ---
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import httpx 
 import google.generativeai as genai
+from pypdf import PdfReader
 from deepgram import (
     DeepgramClient,
     LiveTranscriptionEvents,
@@ -17,7 +19,7 @@ from deepgram import (
 )
 
 # --- DB関連関数のインポート ---
-from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary, delete_session, get_subordinates, create_subordinate
+from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary, delete_session, get_subordinates, create_subordinate, update_subordinate_document, upload_file_to_storage, get_subordinate, get_session
 
 load_dotenv()
 
@@ -42,6 +44,7 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
         self.transcripts: Dict[str, list] = {}
+        self.session_metadata: Dict[str, dict] = {}
 
     async def connect(self, websocket: WebSocket, session_id: str):
         await websocket.accept()
@@ -50,6 +53,14 @@ class ConnectionManager:
             self.transcripts[session_id] = []
         self.active_connections[session_id].append(websocket)
         print(f"Client connected: {session_id}")
+
+    def set_session_info(self, session_id: str, subordinate_id: str):
+        if subordinate_id:
+            self.session_metadata[session_id] = { "subordinate_id": subordinate_id }
+
+    def get_subordinate_id(self, session_id: str):
+        meta = self.session_metadata.get(session_id)
+        return meta.get("subordinate_id") if meta else None
 
     def disconnect(self, websocket: WebSocket, session_id: str):
         if session_id in self.active_connections:
@@ -61,6 +72,8 @@ class ConnectionManager:
                 del self.active_connections[session_id]
                 if session_id in self.transcripts:
                     del self.transcripts[session_id]
+                if session_id in self.session_metadata:
+                    del self.session_metadata[session_id]
                 print(f"Session {session_id} cleanup complete.")
 
     async def broadcast(self, message: dict, session_id: str):
@@ -88,10 +101,23 @@ async def generate_advice(session_id: str, db_session_id: str = None):
     context = manager.get_recent_context(session_id)
     if not context: return
 
+    # 部下データの取得
+    personality_info = ""
+    sub_id = manager.get_subordinate_id(session_id)
+    if sub_id:
+        try:
+            sub = get_subordinate(sub_id)
+            if sub and sub.get("personality_text"):
+                personality_info = f"\n【部下の特性データ (考慮すること)】\n{sub['personality_text']}\n"
+        except Exception as e:
+            print(f"Subordinate Fetch Error: {e}")
+
     conversation_text = "\n".join([f"Speaker {item['speaker']}: {item['text']}" for item in context])
     prompt = f"""
     あなたは1on1ミーティングのコーチです。以下の会話ログを分析し、
     メンター（Speaker 0と仮定）に対して、次にすべき質問や、フィードバックのアドバイスを1文で出力してください。
+    
+    {personality_info}
     
     会話ログ:
     {conversation_text}
@@ -258,6 +284,74 @@ async def create_subordinate_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/subordinates/{subordinate_id}/upload-pdf")
+async def upload_pdf_endpoint(
+    subordinate_id: str,
+    file: UploadFile = File(...),
+    authorization: str = Header(None)
+):
+    """適性検査PDFをアップロード・解析"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    token = authorization.replace("Bearer ", "")
+    user_info = verify_user(token)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # 1. ファイル読み込み
+    try:
+        content = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="File read error")
+
+    # 2. テキスト抽出 (pypdf)
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+    except Exception as e:
+        print(f"PDF Error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid PDF file")
+
+    # 3. Geminiで分析
+    prompt = f"""
+    以下のテキストは、ある人物の適性テストまたは性格診断の結果です。
+    この人物のマネジメントやコーチングに役立つように、以下の項目を抽出・要約してください。
+    
+    1. 性格・行動特性（強み・弱み）
+    2. コミュニケーションの好み（結論から言うべきか、プロセス重視か、など）
+    3. モチベーションの源泉（何でやる気が出るか）
+    4. 接し方の注意点
+    
+    入力テキスト:
+    {text[:30000]}
+    """
+    
+    try:
+        response = await gemini_model.generate_content_async(prompt)
+        analysis = response.text.strip()
+    except Exception as e:
+        print(f"Gemini Analysis Error: {e}")
+        analysis = "分析に失敗しましたが、ファイルは保存されました。"
+
+    # 4. Storageへアップロード
+    file_path = f"{user_info['id']}/{subordinate_id}/{file.filename}"
+    try:
+        upload_file_to_storage("documents", file_path, content)
+    except Exception as e:
+        print(f"Storage Upload Error: {e}")
+        # アップロード失敗してもDB更新は進める（分析結果が重要）
+
+    # 5. DB更新
+    try:
+        update_subordinate_document(subordinate_id, file_path, analysis)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB Error: {e}")
+    
+    return {"status": "ok", "analysis": analysis}
+
 class SummarizeRequest(BaseModel):
     db_session_id: str
 
@@ -408,6 +502,14 @@ async def ws_meeting_baas(
         await websocket.close()
         return
 
+    # 部下情報の紐付け（アドバイス生成用）
+    try:
+        session_data = get_session(db_session_id)
+        if session_data and session_data.get("subordinate_id"):
+            manager.set_session_info(session_id, session_data["subordinate_id"])
+    except Exception as e:
+        print(f"Session Fetch Error: {e}")
+
     # 受け取ったIDを使って処理開始
     await process_audio(websocket, session_id, db_session_id, is_raw_audio=True)
 
@@ -429,6 +531,8 @@ async def ws_client(
     # ----------------
 
     await manager.connect(websocket, session_id)
+    if subordinate_id:
+        manager.set_session_info(session_id, subordinate_id)
 
     try:
         if client_mode == "mic":

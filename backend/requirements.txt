@@ -62,6 +62,8 @@ pyparsing==3.3.1
 pyroaring==1.0.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.1
+python-multipart
+pypdf
 PyYAML==6.0.3
 realtime==2.27.0
 requests==2.32.5

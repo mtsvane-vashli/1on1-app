@@ -72,6 +72,11 @@ def save_advice(session_id: str, content: str):
     }
     supabase.table("advices").insert(data).execute()
 
+def get_session(session_id: str):
+    """指定されたセッション情報を取得"""
+    response = supabase.table("sessions").select("*").eq("id", session_id).single().execute()
+    return response.data
+
 def get_session_transcripts(session_id: str):
     """指定されたセッションの全会話ログを取得"""
     response = supabase.table("transcripts") \
@@ -96,6 +101,11 @@ def delete_session(session_id: str, user_id: str):
     """指定されたセッションを削除 (所有者確認付き)"""
     supabase.table("sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
 
+def get_subordinate(subordinate_id: str):
+    """指定されたIDの部下情報を取得"""
+    response = supabase.table("subordinates").select("*").eq("id", subordinate_id).single().execute()
+    return response.data
+
 def get_subordinates(manager_id: str):
     """部下リストを取得"""
     response = supabase.table("subordinates") \
@@ -115,3 +125,17 @@ def create_subordinate(manager_id: str, organization_id: str, name: str, departm
     }
     response = supabase.table("subordinates").insert(data).execute()
     return response.data[0]
+
+def update_subordinate_document(subordinate_id: str, pdf_path: str, personality_text: str):
+    """部下のドキュメント情報を更新"""
+    supabase.table("subordinates") \
+        .update({
+            "pdf_path": pdf_path,
+            "personality_text": personality_text
+        }) \
+        .eq("id", subordinate_id) \
+        .execute()
+
+def upload_file_to_storage(bucket: str, path: str, file_bytes: bytes, content_type: str = "application/pdf"):
+    """ファイルをStorageにアップロード"""
+    supabase.storage.from_(bucket).upload(path, file_bytes, {"content-type": content_type})
