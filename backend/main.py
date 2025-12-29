@@ -44,12 +44,14 @@ class ConnectionManager:
         self.active_connections: Dict[str, List[WebSocket]] = {}
         self.transcripts: Dict[str, list] = {}
         self.session_metadata: Dict[str, dict] = {}
+        self.last_advice_transcript_count: Dict[str, int] = {}
 
     async def connect(self, websocket: WebSocket, session_id: str):
         await websocket.accept()
         if session_id not in self.active_connections:
             self.active_connections[session_id] = []
             self.transcripts[session_id] = []
+            self.last_advice_transcript_count[session_id] = 0
         self.active_connections[session_id].append(websocket)
         print(f"Client connected: {session_id}")
 
@@ -60,6 +62,15 @@ class ConnectionManager:
     def get_subordinate_id(self, session_id: str):
         meta = self.session_metadata.get(session_id)
         return meta.get("subordinate_id") if meta else None
+
+    def get_transcript_count(self, session_id: str):
+        return len(self.transcripts.get(session_id, []))
+
+    def get_last_advice_count(self, session_id: str):
+        return self.last_advice_transcript_count.get(session_id, 0)
+
+    def update_last_advice_count(self, session_id: str, count: int):
+        self.last_advice_transcript_count[session_id] = count
 
     def disconnect(self, websocket: WebSocket, session_id: str):
         if session_id in self.active_connections:
@@ -73,6 +84,8 @@ class ConnectionManager:
                     del self.transcripts[session_id]
                 if session_id in self.session_metadata:
                     del self.session_metadata[session_id]
+                if session_id in self.last_advice_transcript_count:
+                    del self.last_advice_transcript_count[session_id]
                 print(f"Session {session_id} cleanup complete.")
 
     async def broadcast(self, message: dict, session_id: str):
@@ -97,6 +110,15 @@ manager = ConnectionManager()
 
 async def generate_advice(session_id: str, db_session_id: str = None):
     """Geminiを使ってアドバイスを生成"""
+    # 発言頻度調整: 前回から10発言未満ならスキップ
+    current_count = manager.get_transcript_count(session_id)
+    last_count = manager.get_last_advice_count(session_id)
+    
+    if current_count - last_count < 10:
+        return
+
+    manager.update_last_advice_count(session_id, current_count)
+
     context = manager.get_recent_context(session_id)
     if not context: return
 
