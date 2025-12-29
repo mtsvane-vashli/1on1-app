@@ -558,21 +558,26 @@ export default function Home() {
                 <p className="font-bold text-gray-200 group-hover:text-blue-400 transition-colors">{sub.name}</p>
                 <p className="text-[10px] text-gray-500">{sub.department || "Team Member"}</p>
                 
-                <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 rounded-xl transition-opacity backdrop-blur-[1px]">
+                <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 flex flex-row items-center justify-center gap-2 rounded-xl transition-opacity backdrop-blur-[1px]">
                     <button 
-                        onClick={(e) => { e.stopPropagation(); startMicSession(sub.id); }}
-                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded-lg w-20 font-bold"
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            console.log("Mic button clicked");
+                            startMicSession(sub.id); 
+                        }}
+                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded-lg w-auto font-bold"
                     >
                         🎤 対面
                     </button>
                     <button 
                          onClick={(e) => { 
                              e.stopPropagation(); 
+                             console.log("Web button clicked");
                              setTargetSubordinateForBot(sub.id); 
                              setMeetingUrl(""); 
                              setIsUrlModalOpen(true); 
                          }}
-                        className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded-lg w-20 font-bold"
+                        className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded-lg w-auto font-bold"
                     >
                         🤖 Web
                     </button>
