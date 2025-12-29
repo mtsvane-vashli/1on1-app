@@ -2,6 +2,7 @@ import os
 import asyncio
 import json
 import io
+import uuid
 from typing import List, Dict, Optional
 
 # --- 必要なライブラリをまとめてインポート ---
@@ -326,7 +327,7 @@ async def upload_pdf_endpoint(
     except Exception as e:
         raise HTTPException(status_code=400, detail="File read error")
 
-    # 2. Geminiで分析 (PDFを直接送信)
+    # 3. Geminiで分析 (PDFを直接送信)
     prompt = """
     以下のPDF資料は、ある人物の適性テストまたは性格診断の結果です。
     この人物のマネジメントやコーチングに役立つように、以下の項目を抽出・要約してください。
@@ -349,20 +350,23 @@ async def upload_pdf_endpoint(
         analysis = response.text.strip()
     except Exception as e:
         print(f"Gemini Multimodal Analysis Error: {e}")
-        analysis = "分析に失敗しましたが、ファイルは保存されました。"
+        raise HTTPException(status_code=500, detail="AI分析に失敗しました。")
 
-    # 3. Storageへアップロード
-    file_path = f"{user_info['id']}/{subordinate_id}/{file.filename}"
+    # 4. Storageへアップロード (UUIDファイル名で安全に保存)
+    safe_filename = f"{uuid.uuid4()}.pdf"
+    file_path = f"{user_info['id']}/{subordinate_id}/{safe_filename}"
     try:
         upload_file_to_storage("documents", file_path, content)
     except Exception as e:
         print(f"Storage Upload Error: {e}")
+        raise HTTPException(status_code=500, detail="ファイルの保存に失敗しました。")
 
-    # 4. DB更新
+    # 5. DB更新
     try:
         update_subordinate_document(subordinate_id, file_path, analysis)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DB Error: {e}")
+        print(f"DB Update Error: {e}")
+        raise HTTPException(status_code=500, detail="データベースの更新に失敗しました。")
     
     return {"status": "ok", "analysis": analysis}
 
