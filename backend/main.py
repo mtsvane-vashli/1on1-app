@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 import httpx 
 import google.generativeai as genai
-from pypdf import PdfReader
 from deepgram import (
     DeepgramClient,
     LiveTranscriptionEvents,
@@ -290,7 +289,7 @@ async def upload_pdf_endpoint(
     file: UploadFile = File(...),
     authorization: str = Header(None)
 ):
-    """適性検査PDFをアップロード・解析"""
+    """適性検査PDFをアップロード・解析 (Geminiマルチモーダル対応)"""
     if not authorization:
         raise HTTPException(status_code=401, detail="No token provided")
     
@@ -305,46 +304,39 @@ async def upload_pdf_endpoint(
     except Exception as e:
         raise HTTPException(status_code=400, detail="File read error")
 
-    # 2. テキスト抽出 (pypdf)
-    try:
-        reader = PdfReader(io.BytesIO(content))
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
-    except Exception as e:
-        print(f"PDF Error: {e}")
-        raise HTTPException(status_code=400, detail="Invalid PDF file")
-
-    # 3. Geminiで分析
-    prompt = f"""
-    以下のテキストは、ある人物の適性テストまたは性格診断の結果です。
+    # 2. Geminiで分析 (PDFを直接送信)
+    prompt = """
+    以下のPDF資料は、ある人物の適性テストまたは性格診断の結果です。
     この人物のマネジメントやコーチングに役立つように、以下の項目を抽出・要約してください。
     
     1. 性格・行動特性（強み・弱み）
     2. コミュニケーションの好み（結論から言うべきか、プロセス重視か、など）
     3. モチベーションの源泉（何でやる気が出るか）
     4. 接し方の注意点
-    
-    入力テキスト:
-    {text[:30000]}
     """
     
     try:
-        response = await gemini_model.generate_content_async(prompt)
+        # PDFデータをインラインで送信
+        response = await gemini_model.generate_content_async([
+            prompt,
+            {
+                "mime_type": "application/pdf",
+                "data": content
+            }
+        ])
         analysis = response.text.strip()
     except Exception as e:
-        print(f"Gemini Analysis Error: {e}")
+        print(f"Gemini Multimodal Analysis Error: {e}")
         analysis = "分析に失敗しましたが、ファイルは保存されました。"
 
-    # 4. Storageへアップロード
+    # 3. Storageへアップロード
     file_path = f"{user_info['id']}/{subordinate_id}/{file.filename}"
     try:
         upload_file_to_storage("documents", file_path, content)
     except Exception as e:
         print(f"Storage Upload Error: {e}")
-        # アップロード失敗してもDB更新は進める（分析結果が重要）
 
-    # 5. DB更新
+    # 4. DB更新
     try:
         update_subordinate_document(subordinate_id, file_path, analysis)
     except Exception as e:
