@@ -240,6 +240,7 @@ async def summarize_session(
 
 class JoinMeetingRequest(BaseModel):
     meeting_url: str
+    session_id: str
     bot_name: str = "AI 1on1 Coach"
 
 # 1. Bot派遣リクエスト (HTTP)
@@ -276,10 +277,9 @@ async def join_meeting(
         raise HTTPException(status_code=500, detail=f"DB Error: {e}")
 
     wss_url = public_url.replace("https://", "wss://").replace("http://", "ws://")
-    session_id = "demo-session-1" 
     
     # ★URLパラメータに db_session_id を付与してBotに教える
-    output_url = f"{wss_url}/ws/meeting-baas/{session_id}?db_session_id={db_session_id}"
+    output_url = f"{wss_url}/ws/meeting-baas/{request.session_id}?db_session_id={db_session_id}"
 
     payload = {
         "meeting_url": request.meeting_url,

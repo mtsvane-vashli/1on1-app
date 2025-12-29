@@ -208,7 +208,7 @@ export default function Home() {
       const res = await fetch(`${API_BASE_URL}/join-meeting`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ meeting_url: meetingUrl }),
+        body: JSON.stringify({ meeting_url: meetingUrl, session_id: sessionId }),
       });
       
       const data = await res.json();
