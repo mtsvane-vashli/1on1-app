@@ -57,6 +57,9 @@ export default function Home() {
   // Bot派遣モーダル用
   const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
   const [targetSubordinateForBot, setTargetSubordinateForBot] = useState<string | null>(null);
+  
+  // 履歴フィルター用
+  const [filterSubordinateId, setFilterSubordinateId] = useState<string | null>(null);
 
   // 会議URL入力用
   const [meetingUrl, setMeetingUrl] = useState("");
@@ -86,16 +89,24 @@ export default function Home() {
   }, [router]);
 
   // --- 2. 履歴データの取得 ---
-  const fetchHistory = async () => {
+  const fetchHistory = async (subId?: string | null) => {
     try {
+      setIsLoadingHistory(true); // ロード中表示
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('sessions')
         .select('*')
         .eq('user_id', user.id)
         .order('started_at', { ascending: false });
+      
+      // フィルターがあれば適用
+      if (subId) {
+        query = query.eq('subordinate_id', subId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setHistoryList(data || []);
@@ -527,7 +538,18 @@ export default function Home() {
 
             {/* メンバーカード */}
             {subordinates.map(sub => (
-              <div key={sub.id} className="bg-gray-900 border border-gray-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-blue-500/30 transition-all cursor-pointer group relative">
+              <div 
+                key={sub.id} 
+                onClick={() => {
+                    setFilterSubordinateId(sub.id);
+                    fetchHistory(sub.id);
+                }}
+                className={`bg-gray-900 border p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group relative ${
+                    filterSubordinateId === sub.id 
+                    ? "border-blue-500 bg-blue-900/10 shadow-[0_0_15px_rgba(59,130,246,0.3)]" 
+                    : "border-gray-800 hover:border-blue-500/30"
+                }`}
+              >
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg font-bold shadow-lg shadow-blue-900/20">
                     {sub.name[0]}
                 </div>
@@ -557,8 +579,28 @@ export default function Home() {
             ))}
           </div>
 
-          <h2 className="text-xl font-bold mb-6 text-gray-400 border-b border-gray-800 pb-2 flex items-center gap-2">
-            📂 過去の1on1履歴
+          <h2 className="text-xl font-bold mb-6 text-gray-400 border-b border-gray-800 pb-2 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+                {filterSubordinateId ? (
+                    <>
+                        👤 <span className="text-blue-400">{subordinates.find(s => s.id === filterSubordinateId)?.name}</span> さんとの履歴
+                    </>
+                ) : (
+                    "📂 過去の1on1履歴"
+                )}
+            </span>
+            
+            {filterSubordinateId && (
+                <button 
+                    onClick={() => {
+                        setFilterSubordinateId(null);
+                        fetchHistory(null);
+                    }}
+                    className="text-xs border border-gray-600 px-3 py-1 rounded hover:bg-gray-800 transition-colors"
+                >
+                    ✕ フィルター解除
+                </button>
+            )}
           </h2>
 
           {isLoadingHistory ? (
