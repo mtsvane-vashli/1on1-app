@@ -18,6 +18,7 @@ type Transcript = {
 type SessionHistory = {
   id: string;
   started_at: string;
+  ended_at: string | null;
   title: string;
   summary: string | null;
   mode: string;
@@ -625,6 +626,11 @@ export default function Home() {
                     </h3>
                     <span className="text-xs text-gray-500 font-mono bg-gray-950 px-2 py-1 rounded border border-gray-800">
                       {new Date(session.started_at).toLocaleDateString()} {new Date(session.started_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      {session.ended_at && (
+                          <span className="ml-2 text-gray-400">
+                              ({Math.round((new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 60000)}min)
+                          </span>
+                      )}
                     </span>
                   </div>
                   

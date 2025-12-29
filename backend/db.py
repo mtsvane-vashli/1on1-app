@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from gotrue.errors import AuthApiError
@@ -81,9 +82,13 @@ def get_session_transcripts(session_id: str):
     return response.data
 
 def update_session_summary(session_id: str, summary_text: str):
-    """セッションのsummaryカラムを更新"""
+    """セッションのsummaryとended_atを更新"""
+    now = datetime.now(timezone.utc).isoformat()
     supabase.table("sessions") \
-        .update({"summary": summary_text}) \
+        .update({
+            "summary": summary_text,
+            "ended_at": now
+        }) \
         .eq("id", session_id) \
         .execute()
 
