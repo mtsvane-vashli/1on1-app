@@ -102,6 +102,8 @@ export default function Home() {
       socketRef.current = null;
     }
     if (mediaRecorderRef.current) {
+      // マイクのトラックを完全に停止する
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current = null;
     }
