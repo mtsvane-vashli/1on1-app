@@ -360,34 +360,33 @@ async def ws_client(
 
     await manager.connect(websocket, session_id)
 
-    # ★接続時にDBセッションを作成
     try:
-        db_session_id = create_session(
-            user_info["id"], 
-            user_info["organization_id"], 
-            mode=client_mode # DBにも正しいモードで記録
-        )
+        if client_mode == "mic":
+            # ★マイクモードの時のみDBセッションを作成
+            db_session_id = create_session(
+                user_info["id"], 
+                user_info["organization_id"], 
+                mode="mic"
+            )
 
-        # ★★★ 追加: FrontendにDBのセッションIDを通知する ★★★
-        await websocket.send_json({
-            "type": "db_session_id",
-            "id": db_session_id
-        })
-
-        if client_mode == "viewer":
-            # 視聴モード：音声処理はせず、接続維持のみ行う
-            # (Manager経由で送られてくるメッセージを受信し続けるため)
+            # FrontendにDBのセッションIDを通知する
+            await websocket.send_json({
+                "type": "db_session_id",
+                "id": db_session_id
+            })
+            
+            # 音声処理を開始
+            await process_audio(websocket, session_id, db_session_id, is_raw_audio=False)
+        else:
+            # 視聴モード（Web会議Bot使用時など）：DB作成はせず、接続維持のみ行う
             try:
                 while True:
-                    await websocket.receive_text() # クライアントからの切断待ち
+                    await websocket.receive_text()
             except WebSocketDisconnect:
                 pass
-        else:
-            # マイクモード：音声処理を開始
-            await process_audio(websocket, session_id, db_session_id, is_raw_audio=False)
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in ws_client: {e}")
         await websocket.close()
     finally:
         manager.disconnect(websocket, session_id)
