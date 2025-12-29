@@ -53,7 +53,15 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket, session_id: str):
         if session_id in self.active_connections:
-            self.active_connections[session_id].remove(websocket)
+            if websocket in self.active_connections[session_id]:
+                self.active_connections[session_id].remove(websocket)
+            
+            # 接続が0になったらメモリからデータを消去（メモリリーク防止）
+            if not self.active_connections[session_id]:
+                del self.active_connections[session_id]
+                if session_id in self.transcripts:
+                    del self.transcripts[session_id]
+                print(f"Session {session_id} cleanup complete.")
 
     async def broadcast(self, message: dict, session_id: str):
         if session_id in self.active_connections:

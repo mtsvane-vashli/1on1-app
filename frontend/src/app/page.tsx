@@ -17,7 +17,7 @@ type Transcript = {
 
 type SessionHistory = {
   id: string;
-  created_at: string;
+  started_at: string;
   title: string;
   summary: string | null;
   mode: string;
@@ -429,7 +429,7 @@ export default function Home() {
                       {session.title || "無題の会議"}
                     </h3>
                     <span className="text-xs text-gray-500 font-mono bg-gray-950 px-2 py-1 rounded border border-gray-800">
-                      {new Date(session.created_at).toLocaleDateString()} {new Date(session.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      {new Date(session.started_at).toLocaleDateString()} {new Date(session.started_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                     </span>
                   </div>
                   
