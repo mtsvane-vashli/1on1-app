@@ -221,6 +221,7 @@ export default function Home() {
     setTranscripts([]);
     setAdvice("会話が始まるとここにアドバイスが表示されます...");
     setDbSessionId(null);
+    setActiveTab("advice");
   }, []);
 
   useEffect(() => {
