@@ -17,7 +17,7 @@ from deepgram import (
 )
 
 # --- DB関連関数のインポート ---
-from db import create_session, save_transcript, save_advice, verify_user
+from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary
 
 load_dotenv()
 
@@ -183,6 +183,61 @@ async def process_audio(
 
 # --- Endpoints (ここが大きく変わりました) ---
 
+class SummarizeRequest(BaseModel):
+    db_session_id: str
+
+@app.post("/summarize")
+async def summarize_session(
+    request: SummarizeRequest,
+    authorization: str = Header(None)
+):
+    """会議終了後に要約とネクストアクションを生成して保存する"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    # 認証
+    token = authorization.replace("Bearer ", "")
+    user_info = verify_user(token)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # 1. ログ取得
+    transcripts = get_session_transcripts(request.db_session_id)
+    if not transcripts:
+        return {"summary": "会話データがありませんでした。"}
+
+    # 2. プロンプト作成
+    conversation_text = "\n".join([f"Speaker {t['speaker']}: {t['content']}" for t in transcripts])
+    
+    prompt = f"""
+    以下の1on1ミーティングの会話ログを分析し、Markdown形式で要約を作成してください。
+    
+    ## フォーマット
+    **【会議の要約】**
+    (ここに200文字程度の要約)
+
+    **【決定事項・ネクストアクション】**
+    - (アクション1)
+    - (アクション2)
+
+    ## 会話ログ
+    {conversation_text}
+    """
+
+    # 3. Geminiで生成
+    try:
+        response = await gemini_model.generate_content_async(prompt)
+        summary_text = response.text.strip()
+        
+        # 4. DB保存
+        update_session_summary(request.db_session_id, summary_text)
+        
+        return {"summary": summary_text}
+        
+    except Exception as e:
+        print(f"Summarize Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 class JoinMeetingRequest(BaseModel):
     meeting_url: str
     bot_name: str = "AI 1on1 Coach"
@@ -295,6 +350,13 @@ async def ws_client(
             user_info["organization_id"], 
             mode="mic"
         )
+
+        # ★★★ 追加: FrontendにDBのセッションIDを通知する ★★★
+        await websocket.send_json({
+            "type": "db_session_id",
+            "id": db_session_id
+        })
+
         # 作成したIDを渡して処理開始
         await process_audio(websocket, session_id, db_session_id, is_raw_audio=False)
     except Exception as e:

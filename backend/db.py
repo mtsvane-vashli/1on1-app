@@ -69,3 +69,19 @@ def save_advice(session_id: str, content: str):
         "content": content
     }
     supabase.table("advices").insert(data).execute()
+
+def get_session_transcripts(session_id: str):
+    """指定されたセッションの全会話ログを取得"""
+    response = supabase.table("transcripts") \
+        .select("*") \
+        .eq("session_id", session_id) \
+        .order("timestamp", desc=False) \
+        .execute()
+    return response.data
+
+def update_session_summary(session_id: str, summary_text: str):
+    """セッションのsummaryカラムを更新"""
+    supabase.table("sessions") \
+        .update({"summary": summary_text}) \
+        .eq("id", session_id) \
+        .execute()
