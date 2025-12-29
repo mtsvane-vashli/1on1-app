@@ -1,0 +1,42 @@
+# --- Global / OS / Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# --- Environment Variables (最重要: 全階層で除外) ---
+.env
+.env.*
+!.env.example
+
+# --- Backend (Python/FastAPI) ---
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Frontend (Node.js/Next.js) ---
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# Next.js local env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
