@@ -464,7 +464,7 @@ export default function Home() {
                   onChange={(e) => setMeetingUrl(e.target.value)}
                 />
                 <button
-                  onClick={handleJoinMeeting}
+                  onClick={() => handleJoinMeeting()}
                   disabled={isJoining}
                   className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 rounded text-sm font-bold transition-all disabled:opacity-50"
                 >
@@ -475,7 +475,7 @@ export default function Home() {
               <div className="w-[1px] h-8 bg-gray-700 mx-2"></div>
 
               <button
-                onClick={startMicSession}
+                onClick={() => startMicSession()}
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-all text-sm"
               >
                 対面 (マイク)
