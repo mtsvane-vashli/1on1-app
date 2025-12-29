@@ -17,7 +17,7 @@ from deepgram import (
 )
 
 # --- DB関連関数のインポート ---
-from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary, delete_session
+from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary, delete_session, get_subordinates, create_subordinate
 
 load_dotenv()
 
@@ -210,6 +210,52 @@ async def delete_session_endpoint(
         return {"status": "ok", "message": "Session deleted"}
     except Exception as e:
         print(f"Delete Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class CreateSubordinateRequest(BaseModel):
+    name: str
+    department: Optional[str] = None
+
+@app.get("/subordinates")
+async def get_subordinates_endpoint(authorization: str = Header(None)):
+    """部下リストを取得"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    token = authorization.replace("Bearer ", "")
+    user_info = verify_user(token)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        data = get_subordinates(user_info["id"])
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/subordinates")
+async def create_subordinate_endpoint(
+    request: CreateSubordinateRequest,
+    authorization: str = Header(None)
+):
+    """部下を新規登録"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    token = authorization.replace("Bearer ", "")
+    user_info = verify_user(token)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        new_sub = create_subordinate(
+            user_info["id"], 
+            user_info["organization_id"], 
+            request.name, 
+            request.department
+        )
+        return new_sub
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 class SummarizeRequest(BaseModel):

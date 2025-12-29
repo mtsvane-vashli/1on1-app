@@ -23,6 +23,12 @@ type SessionHistory = {
   mode: string;
 };
 
+type Subordinate = {
+  id: string;
+  name: string;
+  department: string | null;
+};
+
 export default function Home() {
   const router = useRouter();
 
@@ -42,6 +48,11 @@ export default function Home() {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [historyList, setHistoryList] = useState<SessionHistory[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  
+  // 部下管理用
+  const [subordinates, setSubordinates] = useState<Subordinate[]>([]);
+  const [newSubName, setNewSubName] = useState("");
+  const [isAddingSub, setIsAddingSub] = useState(false);
 
   // 会議URL入力用
   const [meetingUrl, setMeetingUrl] = useState("");
@@ -91,8 +102,56 @@ export default function Home() {
     }
   };
 
+  const fetchSubordinates = async () => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) return;
+
+        const res = await fetch(`${API_BASE_URL}/subordinates`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            setSubordinates(data);
+        }
+    } catch (e) {
+        console.error("Fetch sub error:", e);
+    }
+  };
+
+  const handleAddSubordinate = async () => {
+    if (!newSubName.trim()) return;
+    setIsAddingSub(true);
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        
+        const res = await fetch(`${API_BASE_URL}/subordinates`, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json", 
+                "Authorization": `Bearer ${token}` 
+            },
+            body: JSON.stringify({ name: newSubName })
+        });
+        
+        if (res.ok) {
+            setNewSubName("");
+            fetchSubordinates();
+        } else {
+            alert("登録に失敗しました");
+        }
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setIsAddingSub(false);
+    }
+  };
+
   useEffect(() => {
     fetchHistory();
+    fetchSubordinates();
   }, []);
 
   // --- 3. クリーンアップ ---
@@ -429,6 +488,47 @@ export default function Home() {
       {!isConnected ? (
         // ■■■ ダッシュボード表示 (未接続時) ■■■
         <div className="max-w-4xl mx-auto mt-10">
+          
+          {/* チームメンバー管理セクション */}
+          <h2 className="text-xl font-bold mb-6 text-gray-400 border-b border-gray-800 pb-2 flex items-center gap-2">
+            👥 チームメンバー
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
+            {/* 新規追加カード */}
+            <div className="bg-gray-900/50 border border-gray-800 border-dashed rounded-xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-gray-800/50 transition-colors">
+               <input 
+                 className="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-sm w-full text-center text-white"
+                 placeholder="名前を入力..."
+                 value={newSubName}
+                 onChange={(e) => setNewSubName(e.target.value)}
+                 onKeyDown={(e) => e.key === 'Enter' && handleAddSubordinate()}
+               />
+               <button 
+                 onClick={handleAddSubordinate}
+                 disabled={isAddingSub}
+                 className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded w-full disabled:opacity-50"
+               >
+                 {isAddingSub ? "..." : "＋ 追加"}
+               </button>
+            </div>
+
+            {/* メンバーカード */}
+            {subordinates.map(sub => (
+              <div key={sub.id} className="bg-gray-900 border border-gray-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-blue-500/30 transition-all cursor-pointer group relative">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg font-bold shadow-lg shadow-blue-900/20">
+                    {sub.name[0]}
+                </div>
+                <p className="font-bold text-gray-200 group-hover:text-blue-400 transition-colors">{sub.name}</p>
+                <p className="text-[10px] text-gray-500">{sub.department || "Team Member"}</p>
+                
+                {/* ホバー時に「開始」ボタンなどを出す予定の場所 */}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-xl transition-opacity backdrop-blur-[1px]">
+                    <span className="text-xs font-bold text-white border border-white/30 px-3 py-1 rounded-full">Coming Soon</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
           <h2 className="text-xl font-bold mb-6 text-gray-400 border-b border-gray-800 pb-2 flex items-center gap-2">
             📂 過去の1on1履歴
           </h2>

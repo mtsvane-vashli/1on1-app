@@ -89,3 +89,23 @@ def update_session_summary(session_id: str, summary_text: str):
 def delete_session(session_id: str, user_id: str):
     """指定されたセッションを削除 (所有者確認付き)"""
     supabase.table("sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
+
+def get_subordinates(manager_id: str):
+    """部下リストを取得"""
+    response = supabase.table("subordinates") \
+        .select("*") \
+        .eq("manager_id", manager_id) \
+        .order("created_at", desc=False) \
+        .execute()
+    return response.data
+
+def create_subordinate(manager_id: str, organization_id: str, name: str, department: str = None):
+    """部下を新規登録"""
+    data = {
+        "manager_id": manager_id,
+        "organization_id": organization_id,
+        "name": name,
+        "department": department
+    }
+    response = supabase.table("subordinates").insert(data).execute()
+    return response.data[0]
