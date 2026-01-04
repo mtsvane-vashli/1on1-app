@@ -468,7 +468,7 @@ async def join_meeting(
     wss_url = public_url.replace("https://", "wss://").replace("http://", "ws://")
     
     # ★URLパラメータに db_session_id を付与してBotに教える
-    output_url = f"{wss_url}/ws/meeting-baas/{request.session_id}?db_session_id={db_session_id}"
+    output_url = f"{wss_url}/ws/meeting-baas/{request.session_id}?db_session_id={db_session_id}&ngrok-skip-browser-warning=true"
     
     # ★DEBUG: Botに渡すURLを確認
     print(f"DEBUG: Spawning bot to {request.meeting_url}")
