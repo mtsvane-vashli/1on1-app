@@ -449,8 +449,22 @@ async def join_meeting(
     # ----------------
 
     api_key = os.getenv("MEETING_BAAS_API_KEY")
-    public_url = os.getenv("PUBLIC_URL")
     
+    # PUBLIC_URLの取得（環境変数がなければngrok APIから自動取得を試みる）
+    public_url = os.getenv("PUBLIC_URL")
+    if not public_url:
+        try:
+            # Docker内のngrokコンテナからURLを取得
+            async with httpx.AsyncClient() as client:
+                resp = await client.get("http://ngrok:4040/api/tunnels", timeout=2.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data["tunnels"]:
+                        public_url = data["tunnels"][0]["public_url"]
+                        print(f"Auto-detected Public URL: {public_url}")
+        except Exception as e:
+            print(f"Failed to auto-detect public URL: {e}")
+
     if not api_key or not public_url:
         return {"error": "Config missing"}
 
