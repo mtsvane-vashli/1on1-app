@@ -34,6 +34,7 @@ services:
     restart: unless-stopped
 
   ngrok:
+    profiles: [ "dev" ]
     image: ngrok/ngrok:latest
     container_name: 1on1-ngrok
     command: http backend:8000
