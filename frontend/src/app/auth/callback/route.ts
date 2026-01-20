@@ -39,9 +39,15 @@ export async function GET(request: NextRequest) {
         }
 
         console.error('Auth error:', error)
-        return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`)
+        // Redirect to confirmed page but with error details
+        const errorUrl = new URL(next, origin)
+        errorUrl.searchParams.set('error', error.message)
+        errorUrl.searchParams.set('code', error.code || 'unknown')
+        return NextResponse.redirect(errorUrl)
     }
 
     // return the user to an error page with instructions
-    return NextResponse.redirect(`${origin}/login?error=No auth code found`)
+    const noCodeUrl = new URL(next, origin)
+    noCodeUrl.searchParams.set('error', 'No auth code found')
+    return NextResponse.redirect(noCodeUrl)
 }
