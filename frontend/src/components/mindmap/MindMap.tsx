@@ -179,15 +179,20 @@ function MindMapContent({ dbSessionId, readOnly = false }: MindMapProps) {
     // --- Actions ---
 
     const onLayout = useCallback(() => {
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-            getNodes(),
-            getEdges()
-        );
+        try {
+            const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+                getNodes(),
+                getEdges()
+            );
 
-        setNodes([...layoutedNodes]);
-        setEdges([...layoutedEdges]);
+            setNodes([...layoutedNodes]);
+            setEdges([...layoutedEdges]);
 
-        window.requestAnimationFrame(() => fitView({ duration: 800 }));
+            window.requestAnimationFrame(() => fitView({ duration: 800 }));
+        } catch (e) {
+            console.error("Layout failed", e);
+            alert("レイアウトに失敗しました。循環参照がある可能性があります。");
+        }
     }, [getNodes, getEdges, setNodes, setEdges, fitView]);
 
     // 新しい子ノードを追加

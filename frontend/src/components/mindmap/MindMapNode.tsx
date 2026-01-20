@@ -27,6 +27,7 @@ export default function MindMapNode({ data, selected, id }: NodeProps) {
     }, [isEditing]);
 
     const startEditing = () => {
+        if (data.readOnly) return;
         setIsEditing(true);
     };
 
