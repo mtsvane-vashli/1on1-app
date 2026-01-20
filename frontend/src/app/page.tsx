@@ -462,6 +462,10 @@ export default function Home() {
     setMode('viewer');
     setSummary(session.summary);
     setAdvice("過去のログを閲覧中...");
+
+    // ★マインドマップ用にDBセッションIDをセット
+    setDbSessionId(session.id);
+
     setActiveTab(session.summary ? "summary" : "advice");
 
     const { data: transcriptsData } = await supabase

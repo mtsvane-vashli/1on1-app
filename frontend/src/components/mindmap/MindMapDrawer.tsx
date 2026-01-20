@@ -32,7 +32,7 @@ export default function MindMapDrawer({ dbSessionId }: MindMapDrawerProps) {
 
             {/* Drawer Container */}
             <div
-                className={`fixed inset-y-0 right-0 w-[90vw] md:w-[60vw] bg-gray-900 border-l border-gray-700 shadow-2xl transform transition-transform duration-300 z-50 ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+                className={`fixed inset-y-0 right-0 w-full md:w-[95vw] bg-gray-900 border-l border-gray-700 shadow-2xl transform transition-transform duration-300 z-50 ${isOpen ? "translate-x-0" : "translate-x-full"}`}
             >
                 {/* Header / Controls */}
                 <div className="absolute top-4 left-0 -translate-x-full">
