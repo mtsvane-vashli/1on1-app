@@ -60,8 +60,8 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // 1. 未ログインユーザーの制御
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
-    // ログインしていないのに /login 以外にアクセスしたらログイン画面へ
+  if (!user && !request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/auth')) {
+    // ログインしていないのに /login や /auth 以外にアクセスしたらログイン画面へ
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
