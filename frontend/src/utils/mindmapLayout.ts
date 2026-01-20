@@ -36,7 +36,6 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction: Lay
         const childrenNodes = childrenEdges.map(e => nodes.find(n => n.id === e.target)).filter((n): n is Node => !!n);
 
         return {
-            id: node.id,
             ...node, // 元のデータを含める
             children: childrenNodes.map(buildTreeData)
         };

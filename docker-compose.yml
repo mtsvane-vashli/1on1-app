@@ -5,43 +5,26 @@ services:
     container_name: 1on1-backend
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      - ./backend:/app
-    # Override CMD to enable hot-reloading for development
-    command: sh -c "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
-    env_file:
-      - ./backend/.env
+    environment:
+      - DEEPGRAM_API_KEY
+      - GEMINI_API_KEY
+      - MEETING_BAAS_API_KEY
+      - SUPABASE_URL
+      - SUPABASE_SERVICE_KEY
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     container_name: 1on1-frontend
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
     environment:
-      # Ensure Next.js watches for file changes in Docker
-      - WATCHPACK_POLLING=true
-    command: sh -c "npm install && npm run dev"
-    env_file:
-      - ./frontend/.env.local
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-  ngrok:
-    profiles: [ "dev" ]
-    image: ngrok/ngrok:latest
-    container_name: 1on1-ngrok
-    command: http backend:8000
-    ports:
-      - "4040:4040"
-    env_file:
-      - ./backend/.env
+      - NEXT_PUBLIC_SUPABASE_URL
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY
     depends_on:
       - backend
     restart: unless-stopped
