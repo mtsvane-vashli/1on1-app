@@ -139,3 +139,18 @@ def update_subordinate_document(subordinate_id: str, pdf_path: str, personality_
 def upload_file_to_storage(bucket: str, path: str, file_bytes: bytes, content_type: str = "application/pdf"):
     """ファイルをStorageにアップロード"""
     supabase.storage.from_(bucket).upload(path, file_bytes, {"content-type": content_type})
+
+def save_mind_map(session_id: str, nodes: list, edges: list):
+    """マインドマップの保存 (Upsert)"""
+    data = {
+        "session_id": session_id,
+        "nodes": nodes,
+        "edges": edges,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    supabase.table("mind_maps").upsert(data).execute()
+
+def get_mind_map(session_id: str):
+    """マインドマップの取得"""
+    response = supabase.table("mind_maps").select("*").eq("session_id", session_id).single().execute()
+    return response.data

@@ -19,7 +19,7 @@ from deepgram import (
 )
 
 # --- DB関連関数のインポート ---
-from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary, delete_session, get_subordinates, create_subordinate, update_subordinate_document, upload_file_to_storage, get_subordinate, get_session
+from db import create_session, save_transcript, save_advice, verify_user, get_session_transcripts, update_session_summary, delete_session, get_subordinates, create_subordinate, update_subordinate_document, upload_file_to_storage, get_subordinate, get_session, save_mind_map, get_mind_map
 
 load_dotenv()
 
@@ -369,6 +369,58 @@ async def upload_pdf_endpoint(
         raise HTTPException(status_code=500, detail="データベースの更新に失敗しました。")
     
     return {"status": "ok", "analysis": analysis}
+
+# --- Mind Map Endpoints ---
+
+class MindMapRequest(BaseModel):
+    nodes: list
+    edges: list
+
+@app.get("/sessions/{session_id}/mindmap")
+async def get_mind_map_endpoint(
+    session_id: str,
+    authorization: str = Header(None)
+):
+    """マインドマップを取得"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    token = authorization.replace("Bearer ", "")
+    user_info = verify_user(token)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        data = get_mind_map(session_id)
+        if not data:
+            return {"nodes": [], "edges": []}
+        return {"nodes": data["nodes"], "edges": data["edges"]}
+    except Exception as e:
+        # データがない場合も空リストを返すのが親切かもだが、エラーログは残す
+        print(f"Get MindMap Error: {e}")
+        return {"nodes": [], "edges": []}
+
+@app.post("/sessions/{session_id}/mindmap")
+async def save_mind_map_endpoint(
+    session_id: str,
+    request: MindMapRequest,
+    authorization: str = Header(None)
+):
+    """マインドマップを保存"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    token = authorization.replace("Bearer ", "")
+    user_info = verify_user(token)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        save_mind_map(session_id, request.nodes, request.edges)
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"Save MindMap Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class SummarizeRequest(BaseModel):
     db_session_id: str
