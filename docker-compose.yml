@@ -4,7 +4,7 @@ services:
       context: ./backend
     container_name: 1on1-backend
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "8000:8000"
     environment:
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
