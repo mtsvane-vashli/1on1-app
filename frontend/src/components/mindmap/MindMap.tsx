@@ -18,7 +18,7 @@ import {
     ReactFlowProvider,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Save, Loader2, Layout, ScanLn } from 'lucide-react';
+import { Plus, Save, Loader2, Layout, Lock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import MindMapNode from './MindMapNode';
 import { getLayoutedElements } from '@/utils/mindmapLayout';
@@ -40,9 +40,10 @@ const nodeTypes = {
 
 type MindMapProps = {
     dbSessionId: string;
+    readOnly?: boolean;
 };
 
-function MindMapContent({ dbSessionId }: MindMapProps) {
+function MindMapContent({ dbSessionId, readOnly = false }: MindMapProps) {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const [isSaving, setIsSaving] = useState(false);
@@ -53,6 +54,9 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
 
     // --- Helpers ---
     const updateNodeLabel = useCallback((nodeId: string, newLabel: string) => {
+        // ReadOnlyなら更新しない
+        if (readOnly) return;
+
         setNodes((nds) =>
             nds.map((node) => {
                 if (node.id === nodeId) {
@@ -61,18 +65,19 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
                 return node;
             })
         );
-    }, [setNodes]);
+    }, [setNodes, readOnly]);
 
-    // Custom Node用コールバックを注入
+    // Custom Node用コールバック + ReadOnlyフラグを注入
     useEffect(() => {
         setNodes((nds) =>
             nds.map(n => ({
                 ...n,
-                type: 'mindMap', // 古いデータ用強制上書き
-                data: { ...n.data, onLabelChange: updateNodeLabel }
+                type: 'mindMap',
+                data: { ...n.data, onLabelChange: updateNodeLabel, readOnly: readOnly },
+                draggable: !readOnly // ReactFlowのNodeOption
             }))
         );
-    }, [updateNodeLabel, setNodes]);
+    }, [updateNodeLabel, setNodes, readOnly]);
 
 
     // --- API Functions ---
@@ -93,7 +98,8 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
                     const loadedNodes = data.nodes.map((n: Node) => ({
                         ...n,
                         type: 'mindMap',
-                        data: { ...n.data, onLabelChange: updateNodeLabel }
+                        data: { ...n.data, onLabelChange: updateNodeLabel, readOnly: readOnly },
+                        draggable: !readOnly
                     }));
                     setNodes(loadedNodes);
                     setEdges(data.edges);
@@ -109,18 +115,16 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
         } finally {
             setIsLoading(false);
         }
-    }, [dbSessionId, setNodes, setEdges, updateNodeLabel, fitView]);
+    }, [dbSessionId, setNodes, setEdges, updateNodeLabel, fitView, readOnly]);
 
     const saveMindMap = useCallback(async (currentNodes: Node[], currentEdges: Edge[]) => {
+        if (readOnly) return; // 保存しない
+
         setIsSaving(true);
         try {
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
             if (!token) return;
-
-            // 保存時は関数などを除外したいが、JSON.stringifyで落ちる属性は自動で落ちる
-            // ReactFlowのNodeオブジェクトはSerializableなはず
-            // ただし onLabelChange は除外されるのでOK
 
             await fetch(`${API_BASE_URL}/sessions/${dbSessionId}/mindmap`, {
                 method: "POST",
@@ -135,7 +139,7 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
         } finally {
             setIsSaving(false);
         }
-    }, [dbSessionId]);
+    }, [dbSessionId, readOnly]);
 
     // --- Effects ---
 
@@ -148,7 +152,7 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
 
     // Auto-save debouncer
     useEffect(() => {
-        if (isLoading) return;
+        if (isLoading || readOnly) return;
 
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
@@ -162,11 +166,14 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
         return () => {
             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         };
-    }, [nodes, edges, saveMindMap, isLoading]);
+    }, [nodes, edges, saveMindMap, isLoading, readOnly]);
 
     const onConnect = useCallback(
-        (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-        [setEdges],
+        (params: Connection) => {
+            if (readOnly) return;
+            setEdges((eds) => addEdge(params, eds));
+        },
+        [setEdges, readOnly],
     );
 
     // --- Actions ---
@@ -185,6 +192,8 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
 
     // 新しい子ノードを追加
     const addChildNode = useCallback((parentNodeId: string) => {
+        if (readOnly) return;
+
         const parentNode = nodes.find(n => n.id === parentNodeId);
         if (!parentNode) return;
 
@@ -202,7 +211,7 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
                 x: parentNode.position.x + 250,
                 y: parentNode.position.y + (childCount * spacing)
             },
-            data: { label: 'New Topic', onLabelChange: updateNodeLabel },
+            data: { label: 'New Topic', onLabelChange: updateNodeLabel, readOnly: readOnly },
         };
 
         const newEdge: Edge = {
@@ -213,10 +222,12 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
 
         setNodes((nds) => nds.concat(newNode));
         setEdges((eds) => eds.concat(newEdge));
-    }, [nodes, edges, setNodes, setEdges, updateNodeLabel]);
+    }, [nodes, edges, setNodes, setEdges, updateNodeLabel, readOnly]);
 
     // 新しい兄弟ノードを追加 (親を探して、その子として追加)
     const addSiblingNode = useCallback((nodeId: string) => {
+        if (readOnly) return;
+
         // 1. 親エッジを探す
         const parentEdge = edges.find(e => e.target === nodeId);
         if (!parentEdge) {
@@ -229,9 +240,11 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
         const parentId = parentEdge.source;
         addChildNode(parentId);
 
-    }, [edges, addChildNode]);
+    }, [edges, addChildNode, readOnly]);
 
     const deleteNode = useCallback((nodeId: string) => {
+        if (readOnly) return;
+
         // 再帰的に削除するために、対象ノードをRootとするサブツリーを特定する必要がある
         // ここでは簡易的に、ReactFlowの機能で削除する (サブツリー削除はReactFlow標準ではやらないので自前実装)
 
@@ -259,13 +272,16 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
         setNodes((nds) => nds.filter(n => !nodesToDelete.has(n.id)));
         setEdges((eds) => eds.filter(e => !edgesToDelete.has(e.id)));
 
-    }, [edges, setNodes, setEdges]);
+    }, [edges, setNodes, setEdges, readOnly]);
 
     // --- Keyboard Shortcuts ---
     // ReactFlowの onKeyDown だとCanvasにフォーカスが必要なので、window eventにするか、
     // ReactFlowの pane へのイベントを使う
 
     const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+        // ReadOnlyなら無視
+        if (readOnly) return;
+
         // 編集中(Inputへの入力)は発火させない
         // (MindMapNode側で stopPropagation しているはずだが念の為)
         if ((e.target as HTMLElement).tagName === 'INPUT') return;
@@ -287,7 +303,7 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
             deleteNode(selectedId);
         }
 
-    }, [nodes, addChildNode, addSiblingNode, deleteNode]);
+    }, [nodes, addChildNode, addSiblingNode, deleteNode, readOnly]);
 
 
     if (isLoading) {
@@ -311,6 +327,9 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
                 onKeyDown={onKeyDown}
                 deleteKeyCode={null} // 自前実装のため無効化
                 colorMode="dark"
+                nodesDraggable={!readOnly}
+                nodesConnectable={!readOnly}
+                elementsSelectable={!readOnly} // 選択はさせても良いが、操作できないのでSelected状態が紛らわしいかもしれない。一旦選択可にする（Layout後に見やすくするため）
                 fitView
             >
                 <Controls />
@@ -325,18 +344,28 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
                     >
                         <Layout size={16} /> Auto Layout
                     </button>
-                    <div className={`flex items-center gap-1 px-3 py-2 rounded text-xs font-mono border ${isSaving ? "bg-yellow-900/20 border-yellow-700 text-yellow-500" : "bg-green-900/20 border-green-700 text-green-500"}`}>
-                        <Save size={14} className={isSaving ? "animate-pulse" : ""} />
-                        {isSaving ? "Saving..." : "Saved"}
+                    <div className={`flex items-center gap-1 px-3 py-2 rounded text-xs font-mono border ${readOnly ? "bg-gray-800 border-gray-600 text-gray-400" : isSaving ? "bg-yellow-900/20 border-yellow-700 text-yellow-500" : "bg-green-900/20 border-green-700 text-green-500"}`}>
+                        {readOnly ? (
+                            <>
+                                <Lock size={14} /> Read Only
+                            </>
+                        ) : (
+                            <>
+                                <Save size={14} className={isSaving ? "animate-pulse" : ""} />
+                                {isSaving ? "Saving..." : "Saved"}
+                            </>
+                        )}
                     </div>
                 </Panel>
 
-                <Panel position="bottom-center" className="bg-gray-800/80 p-2 rounded-lg text-[10px] text-gray-400 flex gap-4 backdrop-blur-sm border border-gray-700">
-                    <span><kbd className="bg-gray-700 px-1 rounded">Tab</kbd> Add Child</span>
-                    <span><kbd className="bg-gray-700 px-1 rounded">Enter</kbd> Add Sibling</span>
-                    <span><kbd className="bg-gray-700 px-1 rounded">Del</kbd> Delete</span>
-                    <span><kbd className="bg-gray-700 px-1 rounded">DblClick</kbd> Edit Text</span>
-                </Panel>
+                {!readOnly && (
+                    <Panel position="bottom-center" className="bg-gray-800/80 p-2 rounded-lg text-[10px] text-gray-400 flex gap-4 backdrop-blur-sm border border-gray-700">
+                        <span><kbd className="bg-gray-700 px-1 rounded">Tab</kbd> Add Child</span>
+                        <span><kbd className="bg-gray-700 px-1 rounded">Enter</kbd> Add Sibling</span>
+                        <span><kbd className="bg-gray-700 px-1 rounded">Del</kbd> Delete</span>
+                        <span><kbd className="bg-gray-700 px-1 rounded">DblClick</kbd> Edit Text</span>
+                    </Panel>
+                )}
             </ReactFlow>
         </div>
     );

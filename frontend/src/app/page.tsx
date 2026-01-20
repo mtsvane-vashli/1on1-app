@@ -66,6 +66,9 @@ export default function Home() {
   // 履歴フィルター用
   const [filterSubordinateId, setFilterSubordinateId] = useState<string | null>(null);
 
+  // ★履歴閲覧モードかどうかのフラグ
+  const [isHistoryView, setIsHistoryView] = useState(false);
+
   // 会議URL入力用
   const [meetingUrl, setMeetingUrl] = useState("");
   const [isJoining, setIsJoining] = useState(false);
@@ -217,6 +220,7 @@ export default function Home() {
     }
     setMode(null);
     setIsJoining(false);
+    setIsHistoryView(false); // ★リセット
 
     // 状態リセット
     setTranscripts([]);
@@ -386,6 +390,14 @@ export default function Home() {
   };
 
   const handleStopAndSummarize = async () => {
+    // 履歴閲覧中の場合は単純に閉じる
+    if (isHistoryView) {
+      cleanup();
+      setIsConnected(false);
+      fetchHistory();
+      return;
+    }
+
     if (mode === "viewer" && !dbSessionId) {
       cleanup();
       setIsConnected(false);
@@ -460,6 +472,7 @@ export default function Home() {
     cleanup();
     setIsConnected(true);
     setMode('viewer');
+    setIsHistoryView(true); // ★履歴閲覧モードON
     setSummary(session.summary);
     setAdvice("過去のログを閲覧中...");
 
@@ -490,7 +503,7 @@ export default function Home() {
   // --- Render ---
   return (
     <div className="min-h-screen bg-gray-950 text-white p-8 font-sans">
-      <MindMapDrawer dbSessionId={dbSessionId} />
+      <MindMapDrawer dbSessionId={dbSessionId} readOnly={isHistoryView} />
       <header className="mb-8 flex flex-col md:flex-row justify-between items-center max-w-6xl mx-auto gap-4">
         <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
           AI 1on1 Assistant

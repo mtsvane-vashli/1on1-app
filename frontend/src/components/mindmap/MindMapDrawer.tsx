@@ -6,9 +6,10 @@ import MindMap from "./MindMap";
 
 type MindMapDrawerProps = {
     dbSessionId: string | null;
+    readOnly?: boolean;
 };
 
-export default function MindMapDrawer({ dbSessionId }: MindMapDrawerProps) {
+export default function MindMapDrawer({ dbSessionId, readOnly = false }: MindMapDrawerProps) {
     const [isOpen, setIsOpen] = useState(false);
 
     // セッションIDがない（未接続）時は表示しない
@@ -56,7 +57,7 @@ export default function MindMapDrawer({ dbSessionId }: MindMapDrawerProps) {
                     <div className="flex-1 bg-gray-950 relative overflow-hidden">
                         {/* Only render MindMap when drawer is open (or always render to keep state? -> Always render to keep state, but handle perf if needed) */}
                         {/* Always rendering to keep ws connection alive and state managed */}
-                        <MindMap dbSessionId={dbSessionId} />
+                        <MindMap dbSessionId={dbSessionId} readOnly={readOnly} />
                     </div>
                 </div>
             </div>
