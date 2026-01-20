@@ -52,10 +52,18 @@ function MindMapContent({ dbSessionId, readOnly = false }: MindMapProps) {
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const { fitView, getNodes, getEdges } = useReactFlow();
 
+    const readOnlyRef = useRef(readOnly);
+
+    // readOnlyの変更をRefに同期
+    useEffect(() => {
+        readOnlyRef.current = readOnly;
+    }, [readOnly]);
+
     // --- Helpers ---
+    // readOnlyをRefから参照することで、関数自体を再生成しない（安定化）
     const updateNodeLabel = useCallback((nodeId: string, newLabel: string) => {
         // ReadOnlyなら更新しない
-        if (readOnly) return;
+        if (readOnlyRef.current) return;
 
         setNodes((nds) =>
             nds.map((node) => {
@@ -65,16 +73,18 @@ function MindMapContent({ dbSessionId, readOnly = false }: MindMapProps) {
                 return node;
             })
         );
-    }, [setNodes, readOnly]);
+    }, [setNodes]);
 
     // Custom Node用コールバック + ReadOnlyフラグを注入
+    // updateNodeLabelが安定化したため、このEffectは readOnly が変更された時のみ走る
     useEffect(() => {
         setNodes((nds) =>
             nds.map(n => ({
                 ...n,
                 type: 'mindMap',
                 data: { ...n.data, onLabelChange: updateNodeLabel, readOnly: readOnly },
-                draggable: !readOnly // ReactFlowのNodeOption
+                draggable: !readOnly,
+                connectable: !readOnly, // 明示的に設定
             }))
         );
     }, [updateNodeLabel, setNodes, readOnly]);

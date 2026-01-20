@@ -8,6 +8,7 @@ export async function middleware(request: NextRequest) {
     },
   })
 
+  // クライアント作成
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -54,21 +55,24 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // ユーザー情報を取得
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // パフォーマンス最適化: getUser (DB問い合わせ) ではなく getSession (Cookie検証) を使用
+  // セキュリティ上の厳密さが必要な場合のみ getUser に戻すことを検討
+  const { data: { session } } = await supabase.auth.getSession()
 
   // 1. 未ログインユーザーの制御
-  if (!user && !request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/auth')) {
+  if (!session && !request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/auth')) {
     // ログインしていないのに /login や /auth 以外にアクセスしたらログイン画面へ
-    return NextResponse.redirect(new URL('/login', request.url))
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
   }
 
   // 2. ログイン済みユーザーの制御
-  if (user && request.nextUrl.pathname.startsWith('/login')) {
+  if (session && request.nextUrl.pathname.startsWith('/login')) {
     // ログインしているのにログイン画面に来たらトップへ
-    return NextResponse.redirect(new URL('/', request.url))
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    return NextResponse.redirect(url)
   }
 
   return response
