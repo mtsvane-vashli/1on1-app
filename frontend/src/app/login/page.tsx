@@ -21,6 +21,9 @@ export default function LoginPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
         });
         if (error) throw error;
         alert("確認メールを送信しました！メール内のリンクをクリックしてください。");
@@ -47,7 +50,7 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-center mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
           {isSignUp ? "アカウント作成" : "ログイン"}
         </h1>
-        
+
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-1">Email</label>
