@@ -8,7 +8,7 @@ services:
     volumes:
       - ./backend:/app
     # Override CMD to enable hot-reloading for development
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     env_file:
       - ./backend/.env
     restart: unless-stopped
@@ -26,6 +26,7 @@ services:
     environment:
       # Ensure Next.js watches for file changes in Docker
       - WATCHPACK_POLLING=true
+    command: sh -c "npm install && npm run dev"
     env_file:
       - ./frontend/.env.local
     depends_on:

@@ -188,14 +188,19 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
         const parentNode = nodes.find(n => n.id === parentNodeId);
         if (!parentNode) return;
 
+        // 既存の子ノード数をカウントしてY座標をずらす
+        const existingChildren = edges.filter(e => e.source === parentNodeId);
+        const childCount = existingChildren.length;
+        const spacing = 60; // 縦の間隔
+
         const newNodeId = `node-${Date.now()}`;
         const newNode: Node = {
             id: newNodeId,
             type: 'mindMap',
-            // 親の右側に配置 (Layoutかけるので適当でよいが、アニメーション的に近くが良い)
+            // 親の右側に配置。Yは子供の数だけ下にずらす (簡易計算。Layoutボタンで整形推奨)
             position: {
                 x: parentNode.position.x + 250,
-                y: parentNode.position.y
+                y: parentNode.position.y + (childCount * spacing)
             },
             data: { label: 'New Topic', onLabelChange: updateNodeLabel },
         };
@@ -208,7 +213,7 @@ function MindMapContent({ dbSessionId }: MindMapProps) {
 
         setNodes((nds) => nds.concat(newNode));
         setEdges((eds) => eds.concat(newEdge));
-    }, [nodes, setNodes, setEdges, updateNodeLabel]);
+    }, [nodes, edges, setNodes, setEdges, updateNodeLabel]);
 
     // 新しい兄弟ノードを追加 (親を探して、その子として追加)
     const addSiblingNode = useCallback((nodeId: string) => {
