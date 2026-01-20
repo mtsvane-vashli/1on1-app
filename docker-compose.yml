@@ -6,11 +6,11 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
-      - DEEPGRAM_API_KEY
-      - GEMINI_API_KEY
-      - MEETING_BAAS_API_KEY
-      - SUPABASE_URL
-      - SUPABASE_SERVICE_KEY
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      MEETING_BAAS_API_KEY: ${MEETING_BAAS_API_KEY}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
     restart: unless-stopped
 
   frontend:
@@ -23,8 +23,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_SUPABASE_URL
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     depends_on:
       - backend
     restart: unless-stopped
